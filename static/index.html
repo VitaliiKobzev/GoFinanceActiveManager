@@ -86,15 +86,17 @@
                 .then(data => {
                     var assetList = document.getElementById('assetList');
                     assetList.innerHTML = '';
-                    data.forEach(asset => {
+                    data.assets.forEach(asset => {
                         assetList.innerHTML += `
                             <p>${asset.category} - ${asset.name}(${asset.quantity} шт): ${asset.value} 
                             <button onclick="deleteAsset('${asset.name}')">Удалить</button></p>
                         `;
                     });
-                    updateChart(data);
+                    document.getElementById('totalBalance').innerText = `Общий баланс: ${data.totalBalance.toFixed(2)}`; // Update total balance
+                    updateChart(data.assets);
                 });
         }
+
 
         function deleteAsset(name) {
             fetch(`/delete?name=${encodeURIComponent(name)}`, {
@@ -160,5 +162,10 @@
     </script>
     
     <div id="container" style="width: 600px; height: 450px;"></div>
+
+    <div class="inline-block">
+        <h2>Стоимость портфеля</h2>
+        <div id="totalBalance">0</div> <!-- Add this line -->
+    </div>    
 </body>
 </html>

@@ -119,6 +119,7 @@ func getAssets(w http.ResponseWriter, r *http.Request) {
 	var assets []Asset
 	db.Find(&assets)
 	var response []map[string]interface{}
+	totalBalance := 0.0
 	for _, asset := range assets {
 		response = append(response, map[string]interface{}{
 			"name":     asset.Name,
@@ -126,7 +127,15 @@ func getAssets(w http.ResponseWriter, r *http.Request) {
 			"value":    asset.Cost,
 			"quantity": asset.Quantity,
 		})
+		totalBalance += asset.Cost * asset.Quantity
 	}
+
+	result := map[string]interface{}{
+		"assets":       response,
+		"totalBalance": totalBalance,
+	}
+
+	json.NewEncoder(w).Encode(result)
+
 	//log.Printf("Assets data: %+v\n", response) // отладочная информация
-	json.NewEncoder(w).Encode(response)
 }
