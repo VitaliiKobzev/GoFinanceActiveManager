@@ -127,6 +127,6 @@ func getAssets(w http.ResponseWriter, r *http.Request) {
 			"quantity": asset.Quantity,
 		})
 	}
-	//log.Printf("Assets data: %+v\n", response) // Добавим вывод отладочной информации
+	//log.Printf("Assets data: %+v\n", response) // отладочная информация
 	json.NewEncoder(w).Encode(response)
 }
