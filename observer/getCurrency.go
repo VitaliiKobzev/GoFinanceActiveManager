@@ -1,4 +1,4 @@
-package main
+package observer
 
 import (
 	"encoding/json"
@@ -12,7 +12,13 @@ type ForexRate struct {
 	} `json:"Valute"`
 }
 
-func getRubRate(currency string) (float64, error) {
+type Value interface {
+	GetRubRate(currency string) (float64, error)
+}
+
+type ForexService struct{}
+
+func (fs *ForexService) GetRubRate(currency string) (float64, error) {
 	url := "https://www.cbr-xml-daily.ru/daily_json.js"
 	resp, err := http.Get(url)
 	if err != nil {

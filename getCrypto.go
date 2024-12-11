@@ -1,6 +1,7 @@
 package main
 
 import (
+	obs "active/observer"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -21,60 +22,47 @@ type CMCResponse struct {
 	} `json:"data"`
 }
 
-func updateCryptoPrices(w http.ResponseWriter, r *http.Request) {
-	// Уникальные криптовалюты из базы данных
+func updateCryptoPrices() (map[string]float64, error) {
+	// Уникальные криптовалюты из базы данных или новая
 	var cryptoAssets []string
-	db.Model(&Asset{}).Where("category = ?", "Cryptocurrency").Distinct().Pluck("name", &cryptoAssets)
+	db.Model(&obs.Item{}).Where("category = ?", "Cryptocurrency").Distinct().Pluck("name", &cryptoAssets)
 	for i, asset := range cryptoAssets {
 		cryptoAssets[i] = strings.ToLower(asset)
 	}
-	//fmt.Println(cryptoAssets)
 	if len(cryptoAssets) == 0 {
-		w.WriteHeader(http.StatusOK)
-		return
+		fmt.Println("Crypto GG")
+		return nil, nil // Если нет криптовалют
 	}
-	//https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=%s&key=%s
+
 	url := fmt.Sprintf("https://pro-api.coinmarketcap.com/v2/cryptocurrency/quotes/latest?slug=%s", strings.Join(cryptoAssets, ","))
 	req, _ := http.NewRequest("GET", url, nil)
-	// req.Header.Add("Content-Type", "application/json")
-	// req.Header.Add("Accept", "application/json")
 	req.Header.Add("X-CMC_PRO_API_KEY", apiKey)
 	req.Header.Add("Accepts", "application/json")
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
 		log.Printf("Error fetching data: %v", err)
-		http.Error(w, "Error fetching data", http.StatusInternalServerError)
-		return
+		return nil, fmt.Errorf("error fetching data: %w", err)
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Printf("Error reading response body: %v", err)
-		http.Error(w, "Error reading response body", http.StatusInternalServerError)
-		return
+		return nil, fmt.Errorf("error reading response body: %w", err)
 	}
-	//fmt.Println(string(body))
 
 	var result CMCResponse
-	json.Unmarshal(body, &result)
-	//fmt.Println(result)
-	for _, data := range result.Data {
-		price := data.Quote.USD.Price
-		//fmt.Printf("Цена - %f\n", price)
-		var existingAsset Asset
-		if db.Where("name = ? AND category = ?", data.Name, "Cryptocurrency").First(&existingAsset).Error == nil {
-			toRub, err := getRubRate("USD")
-			if err != nil {
-				log.Print("Error with USD\n")
-				return
-			}
-			existingAsset.Cost = math.Round(price*existingAsset.Quantity*toRub*100) / 100
-			db.Save(&existingAsset)
-			//log.Printf("Updated crypto asset: %+v\n", existingAsset)
-		}
+	if err := json.Unmarshal(body, &result); err != nil {
+		log.Printf("Error unmarshalling response: %v", err)
+		return nil, fmt.Errorf("error processing response: %w", err)
 	}
 
-	w.WriteHeader(http.StatusOK)
+	prices := make(map[string]float64)
+	for _, data := range result.Data {
+		price := data.Quote.USD.Price
+		prices[data.Name] = float64(math.Round(price*100) / 100)
+	}
+
+	return prices, nil
 }

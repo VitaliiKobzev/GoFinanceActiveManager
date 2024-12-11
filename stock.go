@@ -1,6 +1,8 @@
 package main
 
 import (
+	obs "active/observer"
+
 	"encoding/xml"
 	"fmt"
 	"io/ioutil"
@@ -33,61 +35,68 @@ type StockResponse struct {
 	Data []Data `xml:"data"`
 }
 
-func updateStockPrices(w http.ResponseWriter, r *http.Request) {
+func updateStockPrices() (map[string]float64, error) {
 	var stockAssets []string
-	db.Model(&Asset{}).Where("category = ?", "Stocks").Distinct().Pluck("name", &stockAssets)
+	db.Model(&obs.Item{}).Where("category = ?", "Stocks").Distinct().Pluck("name", &stockAssets)
 	for i, asset := range stockAssets {
 		stockAssets[i] = strings.ToUpper(asset)
 	}
 	//fmt.Println(stockAssets)
 	if len(stockAssets) == 0 {
-		w.WriteHeader(http.StatusOK)
-		return
+		fmt.Println("Stock GG")
+		return nil, nil
 	}
 
-	for _, asset := range stockAssets {
-		url := fmt.Sprintf("https://iss.moex.com/iss/engines/stock/markets/shares/boards/TQBR/securities/%s.xml", asset)
+	prices := make(map[string]float64)
+
+	for _, item := range stockAssets {
+		url := fmt.Sprintf("https://iss.moex.com/iss/engines/stock/markets/shares/boards/TQBR/securities/%s.xml", item)
 		resp, err := http.Get(url)
 		if err != nil {
-			fmt.Printf("Error fetching data for %s: %v\n", asset, err)
+			fmt.Printf("Error fetching data for %s: %v\n", item, err)
 			continue
 		}
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
-			fmt.Printf("Error response for %s: %s\n", asset, resp.Status)
+			fmt.Printf("Error response for %s: %s\n", item, resp.Status)
 			continue
 		}
 
 		body, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
-			fmt.Printf("Error reading response body for %s: %v\n", asset, err)
+			fmt.Printf("Error reading response body for %s: %v\n", item, err)
 			continue
 		}
 
 		var stockResponse StockResponse
 		if err := xml.Unmarshal(body, &stockResponse); err != nil {
-			fmt.Printf("Error decoding response for %s: %v\n", asset, err)
+			fmt.Printf("Error decoding response for %s: %v\n", item, err)
 			continue
 		}
 
 		for _, data := range stockResponse.Data {
 			if data.ID == "marketdata" {
 				for _, row := range data.Rows.Row {
-					if row.SecID == asset {
+					if row.SecID == item {
 						//fmt.Printf("Stock: %s\n", row.SecID)
 						//fmt.Printf("Last Price: %.2f\n", row.Last)
-						var existingAsset Asset
+						var existingAsset obs.Item
 						if db.Where("name = ? AND category = ?", row.SecID, "Stocks").First(&existingAsset).Error == nil {
-							existingAsset.Cost = math.Round(row.Last*existingAsset.Quantity*100) / 100
+							fmt.Println(existingAsset.Quantity, ' ', existingAsset.Cost)
+							existingAsset.Cost = float64(math.Round(row.Last*100) / 100)
+							price := float64(math.Round(row.Last*100) / 100)
+							prices[row.SecID] = price
 							db.Save(&existingAsset)
 							//log.Printf("Updated stock asset: %+v\n", existingAsset)
+						} else {
+							fmt.Println(db.Where("name = ? AND category = ?", row.SecID, "Stocks").First(&existingAsset).Error)
 						}
 					}
 				}
 			}
 		}
 	}
-
-	fmt.Fprintf(w, "Stock prices updated successfully")
+	fmt.Println("Stock prices updated successfully")
+	return prices, nil
 }

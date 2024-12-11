@@ -1,26 +1,27 @@
 package main
 
 import (
+	obs "active/observer"
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"strconv"
-	"time"
 )
 
-type Asset struct {
-	ID        uint      `gorm:"primaryKey" json:"id"`
-	Name      string    `json:"name"`
-	Category  string    `json:"category"`
-	Cost      float64   `json:"cost"`
-	Income    float64   `json:"income"`
-	Expense   float64   `json:"expense"`
-	Quantity  float64   `json:"quantity"`
-	CreatedAt time.Time `json:"created_at"`
-}
+// type Asset struct {
+// 	ID        uint      `gorm:"primaryKey" json:"id"`
+// 	Name      string    `json:"name"`
+// 	Category  string    `json:"category"`
+// 	Cost      float64   `json:"cost"`
+// 	Income    float64   `json:"income"`
+// 	Expense   float64   `json:"expense"`
+// 	Quantity  float64   `json:"quantity"`
+// 	CreatedAt time.Time `json:"created_at"`
+// }
 
-type AssetInput struct {
+type ItemInput struct {
 	Name     string `json:"name"`
 	Category string `json:"category"`
 	Cost     string `json:"cost"`
@@ -29,8 +30,8 @@ type AssetInput struct {
 	Quantity string `json:"quantity"`
 }
 
-func addAsset(w http.ResponseWriter, r *http.Request) {
-	var input AssetInput
+func addItem(w http.ResponseWriter, r *http.Request) {
+	var input ItemInput
 	err := json.NewDecoder(r.Body).Decode(&input)
 	if err != nil {
 		log.Printf("Error decoding JSON: %v\n", err)
@@ -66,32 +67,39 @@ func addAsset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var existingAsset Asset
-	if result := db.Where("name = ? AND category = ?", input.Name, input.Category).First(&existingAsset); result.Error == nil {
-		existingAsset.Cost += cost
-		existingAsset.Income += income
-		existingAsset.Expense += expense
-		existingAsset.Quantity += quantity
-		db.Save(&existingAsset)
-		log.Printf("Updated asset: %+v\n", existingAsset)
-		json.NewEncoder(w).Encode(existingAsset)
-	} else {
-		asset := Asset{
-			Name:      input.Name,
-			Category:  input.Category,
-			Cost:      cost,
-			Income:    income,
-			Expense:   expense,
-			Quantity:  quantity,
-			CreatedAt: time.Now(),
+	var existingItem obs.Item
+	if result := db.Where("name = ? AND category = ?", input.Name, input.Category).First(&existingItem); result.Error == nil {
+		existingItem.Update(obs.Item{
+			Cost:     cost,
+			Income:   income,
+			Expense:  expense,
+			Quantity: quantity,
+		})
+		// Сохранение обновленного элемента
+		if err := db.Save(&existingItem).Error; err != nil {
+			log.Printf("Error saving updated asset: %v\n", err)
+			http.Error(w, "Error saving updated asset", http.StatusInternalServerError)
+			return
 		}
-		db.Create(&asset)
+
+		log.Printf("Updated asset: %+v\n", existingItem)
+		json.NewEncoder(w).Encode(existingItem)
+	} else {
+		newItem := obs.NewItem(input.Name, input.Category, float64(cost), income, expense, quantity, float64(cost), "RUB", portfolios[curPortofio].GetID())
+
+		db.Create(&newItem)
+		newItem.Register(portfolios[curPortofio])
+		//Items = append(Items, *newItem)
+
+		// for i := range Items {
+		// 	fmt.Print(Items[i].Name)
+		// }
 		//log.Printf("Added asset: %+v\n", asset)
-		json.NewEncoder(w).Encode(asset)
+		json.NewEncoder(w).Encode(newItem)
 	}
 }
 
-func delAsset(w http.ResponseWriter, r *http.Request) {
+func delItem(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodDelete {
 		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
 		return
@@ -99,39 +107,89 @@ func delAsset(w http.ResponseWriter, r *http.Request) {
 
 	name := r.URL.Query().Get("name")
 	if name == "" {
-		http.Error(w, "Asset name is required", http.StatusBadRequest)
+		http.Error(w, "Item name is required", http.StatusBadRequest)
 		return
 	}
 
-	var asset Asset
-	if result := db.Where("name = ?", name).Delete(&asset); result.Error != nil {
-		log.Printf("Error deleting asset: %v\n", result.Error)
-		http.Error(w, "Error deleting asset", http.StatusInternalServerError)
+	var item obs.Item
+	if result := db.Where("name = ?", name).Delete(&item); result.Error != nil {
+		log.Printf("Error deleting item: %v\n", result.Error)
+		http.Error(w, "Error deleting item", http.StatusInternalServerError)
 		return
 	}
 
-	log.Printf("Deleted asset: %s\n", name)
+	log.Printf("Deleted item: %s\n", name)
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprintf(w, "Asset %s deleted successfully", name)
 }
 
-func getAssets(w http.ResponseWriter, r *http.Request) {
-	var assets []Asset
-	db.Find(&assets)
+// Получение цен + стоимости портфеля
+func getItems(w http.ResponseWriter, r *http.Request) {
+	var items []obs.Item
+	db.Find(&items)
+	prices, err := updateCryptoPrices()
+	if err != nil {
+		log.Printf("Error with update crypto: %v", err)
+	}
+	stocks, err := updateStockPrices()
+	if err != nil {
+		log.Printf("Error with update stocks: %v", err)
+	}
+	for key, value := range stocks {
+		prices[key] = value
+	}
+	for key, value := range prices {
+		fmt.Printf("Key: %s, Value: %.2f\n", key, value)
+	}
+	if err != nil {
+		log.Printf("Error updating crypto prices: %v", err)
+		return
+	}
+	for i := range items {
+		item := &items[i]
+		price, exists := prices[item.Name]
+		if exists {
+			fmt.Println("Category", item.Category)
+			if item.Category == "Cryptocurrency" {
+				fs := &obs.ForexService{}
+
+				rubRate, err := fs.GetRubRate("USD")
+				if err != nil {
+					log.Printf("Error getting RUB rate: %v", err)
+					return
+				}
+				item.UpdateAvailability(float64(math.Round(price*100)/100) * rubRate)
+				fmt.Printf("%.2f\n", float64(math.Round(price*100)/100)*rubRate)
+			} else {
+				item.UpdateAvailability(float64(math.Round(price*100) / 100))
+			}
+
+			// Сохраняем обновлённый объект в базу данных
+			if err := db.Save(item).Error; err != nil {
+				log.Printf("Error saving updated item %s: %v", item.Name, err)
+			}
+		} else {
+			log.Printf("Price not found for item: %s", item.Name)
+		}
+	}
 	var response []map[string]interface{}
 	totalBalance := 0.0
-	for _, asset := range assets {
+	// for _, item := range Items {
+	// 	totalBalance += float64(item.Cost) * float64(item.Quantity)
+	// }
+	for _, item := range items {
 		response = append(response, map[string]interface{}{
-			"name":     asset.Name,
-			"category": asset.Category,
-			"value":    asset.Cost,
-			"quantity": asset.Quantity,
+			"name":     item.Name,
+			"category": item.Category,
+			"value":    item.Cost * item.Quantity,
+			"quantity": item.Quantity,
 		})
-		totalBalance += asset.Cost * asset.Quantity
+		//fmt.Println(item.Cost, item.Quantity, "<---- Собственно")
+		totalBalance += item.Cost * item.Quantity
 	}
 
 	result := map[string]interface{}{
-		"assets":       response,
+		"items":        response,
 		"totalBalance": totalBalance,
 	}
 

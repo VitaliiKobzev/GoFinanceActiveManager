@@ -86,14 +86,15 @@
                 .then(data => {
                     var assetList = document.getElementById('assetList');
                     assetList.innerHTML = '';
-                    data.assets.forEach(asset => {
+                    console.log(data);
+                    data.items.forEach(asset => {
                         assetList.innerHTML += `
                             <p>${asset.category} - ${asset.name}(${asset.quantity} шт): ${asset.value} 
                             <button onclick="deleteAsset('${asset.name}')">Удалить</button></p>
                         `;
                     });
                     document.getElementById('totalBalance').innerText = `Общий баланс: ${data.totalBalance.toFixed(2)}`; // Update total balance
-                    updateChart(data.assets);
+                    updateChart(data.items);
                 });
         }
 
@@ -130,12 +131,12 @@
         }
 
         document.addEventListener('DOMContentLoaded', function() {
-            //loadAssets();
-            updatePrices();
+            loadAssets();
+            //updatePrices();
             //setInterval(updateCryptoPrices, 300000); // Каждые 5 минут
         });
 
-        function updatePrices() {
+        /*function updatePrices() {
             Promise.all([
                 fetch('/updateCrypto'),
                 fetch('/updateStock')
@@ -157,7 +158,7 @@
             .catch(error => {
                 console.error(error.message);
             });
-        }
+        }*/
 
     </script>
     
