@@ -2,7 +2,6 @@ package main
 
 import (
 	obs "active/observer"
-	"fmt"
 	"log"
 	"net/http"
 
@@ -11,10 +10,10 @@ import (
 )
 
 var (
-	db          *gorm.DB
-	portfolios  []*obs.Customer
+	db *gorm.DB
+	//portfolios  []*obs.Customer
 	Items       []obs.Item
-	curPortofio int = 0
+	curPortofio uint = 0
 )
 
 func initDB() {
@@ -24,14 +23,27 @@ func initDB() {
 		log.Fatalf("failed to connect database: %v", err)
 	}
 	db.AutoMigrate(&obs.Item{})
+	db.AutoMigrate(&obs.Customer{})
 	//db.AutoMigrate(&Asset{})
+}
+
+func addFirstItemIfEmpty() {
+	var count int64
+	db.Model(&obs.Item{}).Count(&count)
+
+	if count == 0 {
+		firstItem := obs.Customer{Name: "Example"}
+		if err := db.Create(&firstItem).Error; err != nil {
+			log.Fatalf("failed to add first item: %v", err)
+		}
+		log.Println("Первое портфолио добавлено:", firstItem.GetName())
+	}
 }
 
 func main() {
 	initDB()
+	addFirstItemIfEmpty()
 	//shirtItem := obs.NewItem("Bitcoin", 90000, 0.005, "USD")
-	portfolios = append(portfolios, &obs.Customer{ID: "Test"})
-	fmt.Println(portfolios[curPortofio].GetID())
 	// shirtItem.Register(portfolio)
 	// shirtItem.UpdateAvailability()
 	http.HandleFunc("/add", addItem)

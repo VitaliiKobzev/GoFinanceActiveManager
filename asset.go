@@ -85,10 +85,17 @@ func addItem(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Updated asset: %+v\n", existingItem)
 		json.NewEncoder(w).Encode(existingItem)
 	} else {
-		newItem := obs.NewItem(input.Name, input.Category, float64(cost), income, expense, quantity, float64(cost), "RUB", portfolios[curPortofio].GetID())
+		newItem := obs.NewItem(input.Name, input.Category, float64(cost), income, expense, quantity, float64(cost), "RUB", curPortofio)
+
+		//log
+		var customers []obs.Customer
+		if err := db.Find(&customers).Error; err != nil {
+			log.Fatalf("failed to query customers: %v", err)
+		}
+		currentPortfolioLog := customers[curPortofio]
+		log.Printf("Current Portfolio ID: %+v\n", currentPortfolioLog)
 
 		db.Create(&newItem)
-		newItem.Register(portfolios[curPortofio])
 		//Items = append(Items, *newItem)
 
 		// for i := range Items {

@@ -17,11 +17,11 @@ type Item struct {
 	Quantity     float64    `json:"quantity"`
 	TotalPrice   float64    `json:"total_price"`
 	Valuta       string     `json:"value"`
-	Portfolio    string     `json:"portfolio"`
+	Portfolio    uint       `json:"portfolio"`
 	CreatedAt    time.Time  `json:"created_at"`
 }
 
-func NewItem(name string, category string, cost float64, income float64, expense float64, quantity float64, totalPrice float64, valuta string, portfolio string) *Item {
+func NewItem(name string, category string, cost float64, income float64, expense float64, quantity float64, totalPrice float64, valuta string, portfolio uint) *Item {
 	return &Item{
 		Name:       name,
 		Category:   category,

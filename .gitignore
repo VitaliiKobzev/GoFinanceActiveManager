@@ -20,3 +20,7 @@
 # Go workspace file
 go.work
 apiKeys.go
+
+# Ignore Markdown file
+*.md
+README.md
