@@ -1,7 +1,7 @@
 package main
 
 import (
-	obs "active/observer"
+	obs "active/server"
 	"log"
 	"net/http"
 

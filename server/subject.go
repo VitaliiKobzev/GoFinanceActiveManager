@@ -1,4 +1,4 @@
-package observer
+package server
 
 type Subject interface {
 	register(observer Observer)

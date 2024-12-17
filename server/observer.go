@@ -1,4 +1,4 @@
-package observer
+package server
 
 type Observer interface {
 	Update(string)
