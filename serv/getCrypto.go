@@ -1,7 +1,6 @@
 package main
 
 import (
-	obs "active/server"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -25,7 +24,7 @@ type CMCResponse struct {
 func updateCryptoPrices() (map[string]float64, error) {
 	// Уникальные криптовалюты из базы данных или новая
 	var cryptoAssets []string
-	db.Model(&obs.Item{}).Where("category = ?", "Cryptocurrency").Distinct().Pluck("name", &cryptoAssets)
+	db.Model(&Asset{}).Where("type = ?", "Cryptocurrency").Distinct().Pluck("name", &cryptoAssets)
 	for i, asset := range cryptoAssets {
 		cryptoAssets[i] = strings.ToLower(asset)
 	}
@@ -65,4 +64,37 @@ func updateCryptoPrices() (map[string]float64, error) {
 	}
 
 	return prices, nil
+}
+
+func addedCrypto() {
+	var assets []Asset
+	db.Find(&assets)
+
+	prices, err := updateCryptoPrices()
+	if err != nil {
+		fmt.Printf("Error getting CryptoPrices: %v", err)
+		return
+	}
+	fs := &ForexService{}
+	rubRate, err := fs.GetRubRate("USD")
+	if err != nil {
+		fmt.Printf("Error getting RUB rate: %v", err)
+		return
+	}
+	for key, value := range prices {
+		if len(key) > 0 {
+			newKey := strings.ToUpper(string(key[0])) + key[1:]
+			prices[newKey] = value * rubRate
+		}
+	}
+
+	// Обновляем цены активов
+	for i := range assets {
+		if newPrice, exists := prices[assets[i].Name]; exists {
+			assets[i].Price = newPrice
+			db.Save(&assets[i])
+		}
+	}
+
+	fmt.Println("Added crypto")
 }

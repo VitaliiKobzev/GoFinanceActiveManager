@@ -1,8 +1,6 @@
 package main
 
 import (
-	obs "active/server"
-
 	"encoding/xml"
 	"fmt"
 	"io/ioutil"
@@ -37,11 +35,10 @@ type StockResponse struct {
 
 func updateStockPrices() (map[string]float64, error) {
 	var stockAssets []string
-	db.Model(&obs.Item{}).Where("category = ?", "Stocks").Distinct().Pluck("name", &stockAssets)
+	db.Model(&Asset{}).Where("type = ?", "Stocks").Distinct().Pluck("name", &stockAssets)
 	for i, asset := range stockAssets {
 		stockAssets[i] = strings.ToUpper(asset)
 	}
-	//fmt.Println(stockAssets)
 	if len(stockAssets) == 0 {
 		fmt.Println("Stock GG")
 		return nil, nil
@@ -81,22 +78,52 @@ func updateStockPrices() (map[string]float64, error) {
 					if row.SecID == item {
 						//fmt.Printf("Stock: %s\n", row.SecID)
 						//fmt.Printf("Last Price: %.2f\n", row.Last)
-						var existingAsset obs.Item
-						if db.Where("name = ? AND category = ?", row.SecID, "Stocks").First(&existingAsset).Error == nil {
-							fmt.Println(existingAsset.Quantity, ' ', existingAsset.Cost)
-							existingAsset.Cost = float64(math.Round(row.Last*100) / 100)
+						var existingAsset Asset
+						if db.Where("name = ? AND type = ?", row.SecID, "Stocks").First(&existingAsset).Error == nil {
+							fmt.Println(existingAsset.Quantity, ' ', existingAsset.Price)
+							existingAsset.Price = float64(math.Round(row.Last*100) / 100)
 							price := float64(math.Round(row.Last*100) / 100)
 							prices[row.SecID] = price
 							db.Save(&existingAsset)
 							//log.Printf("Updated stock asset: %+v\n", existingAsset)
 						} else {
-							fmt.Println(db.Where("name = ? AND category = ?", row.SecID, "Stocks").First(&existingAsset).Error)
+							fmt.Println(db.Where("name = ? AND type = ?", row.SecID, "Stocks").First(&existingAsset).Error)
 						}
 					}
 				}
 			}
 		}
 	}
-	fmt.Println("Stock prices updated successfully")
+	fmt.Println("Stock prices updated successfully", prices)
 	return prices, nil
+}
+
+func addedStock() {
+	var assets []Asset
+	if err := db.Find(&assets).Error; err != nil {
+		fmt.Printf("Error fetching assets: %v\n", err)
+		return
+	}
+
+	prices, err := updateStockPrices()
+	if err != nil {
+		fmt.Printf("Error getting stock prices: %v\n", err)
+		return
+	}
+
+	for i := range assets {
+		if newPrice, exists := prices[assets[i].Name]; exists {
+			fmt.Printf("Updating price for %s from %.2f to %.2f\n", assets[i].Name, assets[i].Price, newPrice)
+			assets[i].Price = newPrice
+
+			if err := db.Save(&assets[i]).Error; err != nil {
+				fmt.Printf("Error saving asset %s: %v\n", assets[i].Name, err)
+				continue
+			}
+		} else {
+			fmt.Printf("No price found for %s\n", assets[i].Name)
+		}
+	}
+
+	fmt.Println("Added stock")
 }
