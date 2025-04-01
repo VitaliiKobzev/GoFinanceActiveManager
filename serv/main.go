@@ -79,7 +79,7 @@ func main() {
 	corsMiddleware := func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Access-Control-Allow-Origin", "*") // Все домены
-			w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
 			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 
 			// Обработка предварительных запросов (preflight)
@@ -98,6 +98,9 @@ func main() {
 	http.Handle("/get", corsMiddleware(http.HandlerFunc(getPortfolioHandler)))
 	http.Handle("/addportfolio", corsMiddleware(http.HandlerFunc(addPortfolioHandler)))
 	http.Handle("/getname", corsMiddleware(http.HandlerFunc(getPortfoliosHandler)))
+
+	http.Handle("/editportfolio", corsMiddleware(http.HandlerFunc(editPortfolioHandler)))
+	http.Handle("/deleteportfolio", corsMiddleware(http.HandlerFunc(deletePortfolioHandler)))
 
 	// Запуск HTTP-сервера
 	fmt.Println("Server started on :8080")
@@ -379,4 +382,101 @@ func getPortfoliosHandler(w http.ResponseWriter, r *http.Request) {
 		// Если запрашивались все портфели, возвращаем их список
 		json.NewEncoder(w).Encode(map[string]interface{}{"items": response})
 	}
+}
+
+// Обработчик изменения названия портфеля
+func editPortfolioHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "PUT" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var request struct {
+		OldName string `json:"oldName"`
+		NewName string `json:"newName"`
+	}
+
+	err := json.NewDecoder(r.Body).Decode(&request)
+	if err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if request.OldName == "" || request.NewName == "" {
+		http.Error(w, "Both oldName and newName are required", http.StatusBadRequest)
+		return
+	}
+
+	// Проверяем, существует ли портфель с новым именем
+	var existingPortfolio Portfolio
+	result := db.Where("name = ?", request.NewName).First(&existingPortfolio)
+	if result.RowsAffected > 0 {
+		http.Error(w, fmt.Sprintf("Portfolio with name '%s' already exists", request.NewName), http.StatusConflict)
+		return
+	}
+
+	// Находим и обновляем портфель
+	var portfolio Portfolio
+	result = db.Where("name = ?", request.OldName).First(&portfolio)
+	if result.RowsAffected == 0 {
+		http.Error(w, fmt.Sprintf("Portfolio with name '%s' not found", request.OldName), http.StatusNotFound)
+		return
+	}
+
+	portfolio.Name = request.NewName
+	db.Save(&portfolio)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"message": fmt.Sprintf("Portfolio renamed from '%s' to '%s'", request.OldName, request.NewName),
+	})
+}
+
+// Обработчик удаления портфеля
+func deletePortfolioHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "DELETE" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var request struct {
+		Name string `json:"name"`
+	}
+
+	err := json.NewDecoder(r.Body).Decode(&request)
+	if err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if request.Name == "" {
+		http.Error(w, "Portfolio name is required", http.StatusBadRequest)
+		return
+	}
+
+	// Начинаем транзакцию
+	tx := db.Begin()
+
+	// Сначала удаляем все активы портфеля
+	if err := tx.Where("portfolio_id IN (SELECT id FROM portfolios WHERE name = ?)", request.Name).Delete(&Asset{}).Error; err != nil {
+		tx.Rollback()
+		http.Error(w, fmt.Sprintf("Error deleting portfolio assets: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Затем удаляем сам портфель
+	result := tx.Where("name = ?", request.Name).Delete(&Portfolio{})
+	if result.RowsAffected == 0 {
+		tx.Rollback()
+		http.Error(w, fmt.Sprintf("Portfolio with name '%s' not found", request.Name), http.StatusNotFound)
+		return
+	}
+
+	// Фиксируем транзакцию
+	tx.Commit()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"message": fmt.Sprintf("Portfolio '%s' and all its assets deleted successfully", request.Name),
+	})
 }

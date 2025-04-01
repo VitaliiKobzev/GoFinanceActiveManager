@@ -1,229 +1,219 @@
-  <!DOCTYPE html>
-  <html lang="en">
-  <head>
+<!DOCTYPE html>
+<html lang="ru">
+<head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Менеджер фин активов</title>
-    <script src="https://cdn.anychart.com/releases/v8/js/anychart-base.min.js"></script>
-    <script src="https://cdn.anychart.com/releases/v8/js/anychart-ui.min.js"></script>
+    <title>Портфели</title>
     <style>
-      table {
-        border-collapse: collapse;
-        width: 100%;
-      }
-      th, td {
-        border: 1px solid black;
-        padding: 8px;
-        text-align: left;
-      }
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        .portfolio-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .portfolio {
+            border: 1px solid #ccc;
+            padding: 20px;
+            border-radius: 5px;
+            width: 200px;
+            text-align: center;
+            cursor: pointer;
+            transition: transform 0.2s;
+            position: relative;
+        }
+        .portfolio:hover {
+            transform: scale(1.05);
+        }
+        .portfolio-actions {
+            margin-top: 10px;
+            display: flex;
+            justify-content: space-around;
+        }
+        .portfolio-actions button {
+            padding: 5px 10px;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .portfolio-actions button.edit {
+            background-color: #ffc107;
+            color: black;
+        }
+        .portfolio-actions button.delete {
+            background-color: #dc3545;
+            color: white;
+        }
+        .add-portfolio-form {
+            margin-top: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .add-portfolio-form input {
+            margin-bottom: 10px;
+            padding: 5px;
+            width: 200px;
+        }
+        .add-portfolio-form button {
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .add-portfolio-form button:hover {
+            background-color: #0056b3;
+        }
     </style>
-  </head>
-  <body>
-    <h1>Менеджер фин активов</h1>
+</head>
+<body>
+    <h1>Ваши портфели</h1>
 
-    <!-- добавление актива -->
-    <form id="add-form">
-      <h2>Добавление</h2>
-      <label for="name">Название:</label>
-      <input type="text" id="name" name="name" required><br>
-      <label for="type">Категория:</label>
-      <select id="type" name="type" required>
-        <option value="Stocks">Акции</option>
-        <option value="Bonds">Облигации</option>
-        <option value="Commodities">Товары(предметы)</option>
-        <option value="Cryptocurrency">Криптовалюта</option>
-        <option value="InOutComes">Вклад(займ)</option>
-        <option value="Other">Другое</option>
-      </select><br>
-      <!--
-      <label for="price">Цена:</label>
-      <input type="number" step="0.01" id="price" name="price" required><br>
-      -->
-      <label for="quantity">Количество:</label>
-      <input type="number" id="quantity" name="quantity" required><br>
-      <button type="submit">Добавить</button>
-    </form>
+    <!-- Контейнер для отображения портфелей -->
+    <div class="portfolio-container" id="portfolios"></div>
 
-    <!-- Форма для удаления актива -->
-    <form id="remove-form">
-      <h2>Удаление</h2>
-      <label for="remove-name">Название:</label>
-      <input type="text" id="remove-name" name="remove-name" required><br>
-      <button type="submit">Удалить</button>
-    </form>
+     <!-- Форма для добавления нового портфеля -->
+    <div class="add-portfolio-form">
+      <h2>Добавить новый портфель</h2>
+      <input type="text" id="new-portfolio-name" placeholder="Название портфеля" required>
+      <button onclick="addPortfolio()">Создать</button>
+    </div>
 
-    <div id="container" style="width: 600px; height: 450px;"></div>
-
-    <!-- Таблица для отображения портфеля -->
-    <h2>Текущее портфолио</h2>
-    <table id="portfolio-table">
-      <thead>
-        <tr>
-          <th>Название</th>
-          <th>Тип актива</th>
-          <th>Цена</th>
-          <th>Количество</th>
-        </tr>
-      </thead>
-      <tbody>
-        <!-- Данные будут загружены с сервера -->
-      </tbody>
-    </table>
+    <script type="module">
+        import { notification } from './scripts/notify.js';
+    
+        /*document.addEventListener("DOMContentLoaded", () => {
+            notification.success("Успех!", "Уведомление работает!", 3000);
+        });*/
+    </script>
+    
+    
 
     <script>
+
+        // Базовый URL API
         const apiUrl = 'http://localhost:8080';
-        let chart;
 
-        // Функция для извлечения параметра из URL
-        function getQueryParam(param) {
-            const urlParams = new URLSearchParams(window.location.search);
-            return urlParams.get(param);
+        // Функция для загрузки портфелей
+        async function fetchPortfolios() {
+            try {
+                const response = await fetch(`${apiUrl}/getname`); // ?all=true
+                const data = await response.json();
+                const container = document.getElementById("portfolios");
+                container.innerHTML = "";
+
+                console.log(data);
+
+                data.items.forEach(portfolio => {
+                    const div = document.createElement("div");
+                    div.className = "portfolio";
+                    div.innerHTML = `
+                        <h3>${portfolio.Name}</h3>
+                        <p>Стоимость: ${portfolio.totalBalance.toFixed(2)} ₽</p>
+                        <div class="portfolio-actions">
+                            <button class="edit" onclick="editPortfolio('${portfolio.Name}', event)">Изменить</button>
+                            <button class="delete" onclick="deletePortfolio('${portfolio.Name}', event)">Удалить</button>
+                        </div>
+                    `;
+                    div.onclick = () => {
+                        window.location.href = `portfolio?name=${portfolio.Name}`;
+                    };
+                    container.appendChild(div);
+                });
+            } catch (error) {
+                console.error("Ошибка загрузки портфелей:", error);
+            }
         }
 
-        // Функция для получения ID портфеля по имени
-        async function getPortfolioID(portfolioName) {
-            const response = await fetch(`${apiUrl}/getname?name=${encodeURIComponent(portfolioName)}`);
-            if (!response.ok) {
-                alert(`Портфель с именем '${portfolioName}' не найден.`);
-                return null;
-            }
-            const data = await response.json();
-            //console.log(data);
-            return data.id; // Предполагается, что сервер возвращает ID портфеля
-        }
-
-        // Функция для обновления таблицы портфеля
-        async function updatePortfolio() {
-          const portfolioName = getQueryParam('name'); // Получаем имя портфеля из URL
-          if (!portfolioName) {
-              alert("Параметр 'name' не найден в URL.");
-              return;
-          }
-          const portfolioID = await getPortfolioID(portfolioName);
-          if (!portfolioID) {
-              return;
-          }
-
-          const response = await fetch(`${apiUrl}/get?name=${portfolioName}`);
-          
-          const assets = await response.json();
-
-          console.log(assets);
-
-          const tbody = document.querySelector('#portfolio-table tbody');
-          tbody.innerHTML = ''; // Очистить таблицу
-
-          assets.items.forEach(asset => {
-              const row = document.createElement('tr');
-              asset.x = asset.Name;
-              asset.value = asset.Price * asset.Quantity;
-              row.innerHTML = `
-                  <td>${asset.Name}</td>
-                  <td>${asset.Type}</td>
-                  <td>${(asset.Price * asset.Quantity).toFixed(2)}</td>
-                  <td>${asset.Quantity}</td>
-              `;
-              tbody.appendChild(row);
-          });
-
-          updateChart(assets.items);
-      }
-
-        // Обработчик формы добавления актива
-        document.getElementById('add-form').addEventListener('submit', async (e) => {
-            e.preventDefault();
-
-            const portfolioName = getQueryParam('name'); // Получаем имя портфеля из URL
+        // Функция для добавления нового портфеля
+        async function addPortfolio() {
+            const portfolioName = document.getElementById("new-portfolio-name").value.trim();
             if (!portfolioName) {
-                alert("Параметр 'name' не найден в URL.");
+                notification.warning('Внимание', 'Введите название портфеля!');
                 return;
             }
-
-            const portfolioID = await getPortfolioID(portfolioName);
-            if (!portfolioID) {
-                return;
-            }
-
-            const formData = {
-                name: document.getElementById('name').value,
-                type: document.getElementById('type').value,
-                price: 0.00, // parseFloat(document.getElementById('price').value)
-                quantity: parseInt(document.getElementById('quantity').value),
-                portfolioID: portfolioID, // Добавляем ID портфеля
-            };
-
-            const response = await fetch(`${apiUrl}/add`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(formData),
-            });
-
-            if (!response.ok) {
-                alert(`Произошла ошибка. Данный актив не поддерживается`);
-                return;
-            }
-
-            updatePortfolio();
-        });
-
-        // Обработчик формы удаления актива
-        document.getElementById('remove-form').addEventListener('submit', async (e) => {
-            e.preventDefault();
-
-            const portfolioName = getQueryParam('name'); // Получаем имя портфеля из URL
-            if (!portfolioName) {
-                alert("Параметр 'name' не найден в URL.");
-                return;
-            }
-
-            const portfolioID = await getPortfolioID(portfolioName);
-            if (!portfolioID) {
-                return;
-            }
-
-            const name = document.getElementById('remove-name').value;
 
             try {
-                const response = await fetch(`${apiUrl}/remove`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ name, portfolioID }), // Передаем имя актива и ID портфеля
+                const response = await fetch(`${apiUrl}/addportfolio`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ name: portfolioName }),
                 });
 
-                if (!response.ok) {
+                if (response.ok) {
+					notification.success('Успех', 'Портфель успешно создан!');
+                    document.getElementById("new-portfolio-name").value = ""; // Очистить поле ввода
+                    fetchPortfolios(); // Обновить список портфелей
+                } else {
                     const errorData = await response.json();
-                    alert(`Ошибка: ${errorData.error || "Не удалось удалить актив"}`);
-                    return;
+					notification.error('Ошибка', '${errorData.message || "Не удалось создать портфель"}');
                 }
-
-                const successData = await response.json();
-                alert(successData.message); // Показываем сообщение об успешном удалении
-                updatePortfolio(); // Обновляем список активов
             } catch (error) {
-                console.error("Ошибка при удалении актива:", error);
-                alert("Произошла ошибка при удалении актива.");
-            }
-        });
-
-        // Инициализация: загрузка портфеля при запуске
-        updatePortfolio();
-        setInterval(updatePortfolio, 1000);
-
-        function drawChartTotal(data) {
-            chart = anychart.pie();
-            chart.title('Активы');
-            chart.data(data.map(asset => ({ x: asset.Name, value: asset.Price * asset.Quantity })));
-            chart.container('container');
-            chart.draw();
-        }
-
-        function updateChart(data) {
-            if (chart) {
-                chart.data(data.map(asset => ({ x: asset.Name, value: asset.Price * asset.Quantity })));
-            } else {
-                drawChartTotal(data);
+				notification.error('Ошибка', 'Не удалось создать портфель');
             }
         }
+
+        // Функция для изменения названия портфеля
+        async function editPortfolio(portfolioName, event) {
+            event.stopPropagation(); // Остановить всплытие события
+            const newName = prompt("Введите новое название портфеля:", portfolioName);
+            if (newName && newName.trim() !== portfolioName) {
+                try {
+                    const response = await fetch(`${apiUrl}/editportfolio`, {
+                        method: "PUT",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ oldName: portfolioName, newName: newName.trim() }),
+                    });
+
+                    if (response.ok) {
+						notification.success('Успех', 'Название портфеля успешно изменено!');
+                        fetchPortfolios(); // Обновить список портфелей
+                    } else {
+                        const errorData = await response.json();
+						notification.error('Ошибка', '${errorData.message || "Не удалось изменить название портфеля"}');
+                    }
+                } catch (error) {
+					notification.error('Ошибка', 'Произошла ошибка при изменении портфеля.');
+                }
+            }
+        }
+
+        // Функция для удаления портфеля
+        async function deletePortfolio(portfolioName, event) {
+            event.stopPropagation(); // Остановить всплытие события
+            const confirmDelete = confirm(`Вы уверены, что хотите удалить портфель "${portfolioName}"?`);
+            if (confirmDelete) {
+                try {
+                    const response = await fetch(`${apiUrl}/deleteportfolio`, {
+                        method: "DELETE",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ name: portfolioName }),
+                    });
+
+                    if (response.ok) {
+						notification.success('Успех', 'Портфель удален!');
+                        fetchPortfolios(); // Обновить список портфелей
+                    } else {
+                        const errorData = await response.json();
+						notification.error('Ошибка', '${errorData.message || "Не удалось удалить портфель"}');
+                    }
+                } catch (error) {
+					notification.error('Ошибка', 'Произошла ошибка при удалении портфеля.');
+                }
+            }
+        }
+
+        // Загрузка портфелей при запуске страницы
+        fetchPortfolios();
     </script>
-  </body>
-  </html>
+</body>
+</html>
