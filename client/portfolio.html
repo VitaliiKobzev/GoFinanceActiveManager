@@ -42,10 +42,8 @@
         <option value="InOutComes">Вклад(займ)</option>
         <option value="Other">Другое</option>
       </select><br>
-      <!--
-      <label for="price">Закупочная цена:</label>
-      <input type="number" step="0.01" id="price" name="price" required><br>
-      -->
+      <label for="price">Потрачено(общ.):</label>
+      <input type="number" step="0.01" id="initialPrice" name="price" required><br>
       <label for="quantity">Количество:</label>
       <input type="number" id="quantity" name="quantity" required><br>
       <button type="submit">Добавить</button>
@@ -58,6 +56,10 @@
       <input type="text" id="remove-name" name="remove-name" required><br>
       <button type="submit">Удалить</button>
     </form>
+
+    <div class="button-container">
+      <button id="update-initial-prices-btn">Обновить начальные цены</button>
+    </div>
 
     <div id="container" style="width: 600px; height: 450px;"></div>
 
@@ -162,6 +164,7 @@
                 name: document.getElementById('name').value,
                 type: document.getElementById('type').value,
                 price: 0.00, // parseFloat(document.getElementById('price').value)
+                initialPrice: parseFloat(document.getElementById('initialPrice').value),
                 quantity: parseInt(document.getElementById('quantity').value),
                 portfolioID: portfolioID, // Добавляем ID портфеля
             };
@@ -218,6 +221,32 @@
                 updatePortfolio(); // Обновляем список активов
             } catch (error) {
                 notification.error('Ошибка', `Произошла ошибка при удалении актива.`);
+            }
+        });
+
+        document.getElementById('update-initial-prices-btn').addEventListener('click', async () => {
+            const currentPortfolioName = getQueryParam('name');
+            if (!currentPortfolioName) {
+                notification.error('Ошибка', 'Не удалось определить текущий портфель');
+                return;
+            }
+
+            try {
+                notification.info('Обновление', 'Начато обновление начальных цен...');
+                
+                // Отправляем запрос на сервер для обновления начальных цен
+                const response = await fetch(`${apiUrl}/updateinitialprices?name=${currentPortfolioName}`, {
+                    method: 'POST',
+                });
+
+                if (!response.ok) {
+                    throw new Error('Ошибка при обновлении начальных цен');
+                }
+
+                const result = await response.json();
+                notification.success('Успех', `Начальные цены обновлены для: ${result.updated.join(', ')}`);
+            } catch (error) {
+                notification.error('Ошибка', 'Не удалось обновить начальные цены: ' + error.message);
             }
         });
 

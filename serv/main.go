@@ -13,12 +13,13 @@ import (
 
 // Модель актива
 type Asset struct {
-	ID          uint `gorm:"primaryKey"`
-	Name        string
-	Type        string
-	Price       float64 // Текущая цена
-	Quantity    float64 // Количество в портфеле
-	PortfolioID *uint   // ID портфеля, к которому принадлежит актив
+	ID           uint `gorm:"primaryKey"`
+	Name         string
+	Type         string
+	Price        float64 // Текущая цена
+	InitialPrice float64
+	Quantity     float64 // Количество в портфеле
+	PortfolioID  *uint   // ID портфеля, к которому принадлежит актив
 }
 
 // Модель портфеля финансовых активов
@@ -72,8 +73,21 @@ func main() {
 	// Заполнение базы данных начальными данными
 	seedDatabase()
 
+	// Инициализация Telegram бота
+	tgConfig := TelegramConfig{
+		BotToken: botApi,
+		ChatID:   chatID,
+		Enabled:  true, // Включить/выключить уведомления
+	}
+
+	botClient := NewBotClient(tgConfig, db, 0)
+
 	// Запуск периодического обновления цен
 	go updatePrices()
+
+	//go startHourlyPriceCheck(botClient)
+
+	go botClient.StartDailyNotifications()
 
 	// Middleware для обработки CORS
 	corsMiddleware := func(next http.Handler) http.Handler {
@@ -101,6 +115,8 @@ func main() {
 
 	http.Handle("/editportfolio", corsMiddleware(http.HandlerFunc(editPortfolioHandler)))
 	http.Handle("/deleteportfolio", corsMiddleware(http.HandlerFunc(deletePortfolioHandler)))
+
+	http.Handle("/updateinitialprices", corsMiddleware(http.HandlerFunc(updateInitialPricesHandler)))
 
 	// Запуск HTTP-сервера
 	fmt.Println("Server started on :8080")
@@ -479,4 +495,61 @@ func deletePortfolioHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{
 		"message": fmt.Sprintf("Portfolio '%s' and all its assets deleted successfully", request.Name),
 	})
+}
+
+// updateInitialPricesHandler обрабатывает запрос на обновление начальных цен
+func updateInitialPricesHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	portfolioName := r.URL.Query().Get("name")
+	if portfolioName == "" {
+		http.Error(w, "Missing 'name' parameter", http.StatusBadRequest)
+		return
+	}
+
+	// Получаем портфель с активами
+	var portfolio Portfolio
+	result := db.Preload("Assets").Where("name = ?", portfolioName).First(&portfolio)
+	if result.Error != nil {
+		http.Error(w, fmt.Sprintf("Portfolio not found: %v", result.Error), http.StatusNotFound)
+		return
+	}
+
+	updatedAssets := updateAssetsInitialPrices(portfolio.Assets)
+
+	if len(updatedAssets) == 0 {
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]string{"message": "No applicable assets to update (only Stocks and Cryptocurrency)"})
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"message": "Initial prices updated successfully",
+		"updated": updatedAssets,
+	})
+}
+
+// updateAssetsInitialPrices обновляет начальные цены для активов
+func updateAssetsInitialPrices(assets []Asset) []string {
+	updatedAssets := make([]string, 0)
+
+	for i := range assets {
+		asset := &assets[i]
+		// Обновляем только для акций и криптовалют
+		if asset.Type == "Cryptocurrency" || asset.Type == "Stocks" {
+			// Устанавливаем начальную цену равной текущей
+			asset.InitialPrice = asset.Price * asset.Quantity
+			if err := db.Save(asset).Error; err != nil {
+				fmt.Printf("Error saving asset: %v", err)
+				continue
+			}
+			updatedAssets = append(updatedAssets, asset.Name)
+		}
+	}
+
+	return updatedAssets
 }
