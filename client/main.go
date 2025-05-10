@@ -41,12 +41,22 @@ func corsMiddleware(next http.HandlerFunc) http.HandlerFunc {
 
 func main() {
 	fs := http.FileServer(http.Dir("./client")) // Раздаем файлы из текущей папки
+	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("./client"))))
 
 	http.Handle("/", fs)
 
 	// Обработчик для index.html
 	http.HandleFunc("/portfolio", corsMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, "./client/portfolio.html")
+	}))
+
+	http.HandleFunc("/portfolio/settings", corsMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		name := r.URL.Query().Get("name")
+		if name == "" {
+			http.Error(w, "Missing portfolio name", http.StatusBadRequest)
+			return
+		}
+		http.ServeFile(w, r, "./client/portfolio-settings.html")
 	}))
 
 	// Обработчик для portfolio.html

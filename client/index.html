@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Портфели</title>
+    <link rel="stylesheet" href="styles/logo.css">
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -76,6 +77,14 @@
     </style>
 </head>
 <body>
+    <a href="/" class="logo">
+        <div class="logo-icon"></div>
+        <div class="logo-text">
+            <h1><span>Go</span>Finance</h1>
+            <p>Active Manager</p>
+        </div>
+    </a>
+
     <h1>Ваши портфели</h1>
 
     <!-- Контейнер для отображения портфелей -->
@@ -104,9 +113,10 @@
         const apiUrl = 'http://localhost:8080';
 
         // Функция для загрузки портфелей
+        // Функция для загрузки портфелей
         async function fetchPortfolios() {
             try {
-                const response = await fetch(`${apiUrl}/getname`); // ?all=true
+                const response = await fetch(`${apiUrl}/getname`);
                 const data = await response.json();
                 const container = document.getElementById("portfolios");
                 container.innerHTML = "";
@@ -120,19 +130,30 @@
                         <h3>${portfolio.Name}</h3>
                         <p>Стоимость: ${portfolio.totalBalance.toFixed(2)} ₽</p>
                         <div class="portfolio-actions">
-                            <button class="edit" onclick="editPortfolio('${portfolio.Name}', event)">Изменить</button>
+                            <button class="edit">Настроить</button>
                             <button class="delete" onclick="deletePortfolio('${portfolio.Name}', event)">Удалить</button>
                         </div>
                     `;
+
+                    // Перенаправление по клику на сам блок
                     div.onclick = () => {
                         window.location.href = `portfolio?name=${portfolio.Name}`;
                     };
+
+                    // Обработка кнопки изменения (отдельно, чтобы не сработал redirect всего div)
+                    const editButton = div.querySelector(".edit");
+                    editButton.onclick = (e) => {
+                        e.stopPropagation(); // Остановить всплытие события на div
+                        window.location.href = `/portfolio/settings?name=${portfolio.Name}`;
+                    };
+
                     container.appendChild(div);
                 });
             } catch (error) {
                 console.error("Ошибка загрузки портфелей:", error);
             }
         }
+
 
         // Функция для добавления нового портфеля
         async function addPortfolio() {

@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Настройки</title>
+    <link rel="stylesheet" href="/static/styles/logo.css">
+</head>
+<body>
+  <a href="/" class="logo">
+    <div class="logo-icon"></div>
+    <div class="logo-text">
+      <h1><span>Go</span>Finance</h1>
+      <p>Active Manager</p>
+    </div>
+  </a>
+
+  <div class="settings-container">
+    <h2>Настройки портфеля</h2>
+    <label>Название портфеля:</label>
+    <input type="text" id="portfolioName" />
+
+    <button onclick="saveSettings()">Сохранить</button>
+  </div>
+
+  <script>
+    const urlParams = new URLSearchParams(window.location.search);
+    const name = urlParams.get("name");
+    document.getElementById("portfolioName").value = name || "";
+
+    function saveSettings() {
+      const newName = document.getElementById("portfolioName").value.trim();
+      if (!newName) {
+        alert("Введите новое имя портфеля.");
+        return;
+      }
+
+      fetch("http://localhost:8080/editportfolio", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ oldName: name, newName })
+      }).then(res => {
+        if (res.ok) {
+          alert("Имя портфеля обновлено!");
+          window.location.href = "/"; // или вернуться на /portfolio
+        } else {
+          alert("Ошибка при обновлении имени.");
+        }
+      });
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,83 @@
+body {
+  background-color: #0e4da2;
+  margin: 0;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  color: white;
+}
+
+/* Контейнер для логотипа */
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  top: 10px;
+  left: 10px;
+  z-index: 1000;
+}
+
+/*
+.logo-icon {
+  width: 60px;
+  height: 60px;
+  background-image: url('/mnt/data/logov1.png');
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+}
+*/
+
+.logo-text {
+  color: white;
+}
+
+.logo-text h1 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 400;
+}
+
+.logo-text h1 span {
+  font-weight: 700;
+}
+
+.logo-text p {
+  margin: 2px 0 0 0;
+  letter-spacing: 3px;
+  font-size: 12px;
+  text-transform: uppercase;
+  color: #d1e6ff;
+}
+
+.logo,
+.logo:visited,
+.logo:hover,
+.logo:active {
+  text-decoration: none;
+}
+
+button {
+  background-color: #0e4da2; /* основной синий цвет, как фон страницы */
+  color: white;
+  border: 2px solid #d1e6ff;
+  padding: 5px 5px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background-color 0.3s, transform 0.2s;
+}
+
+button:hover {
+  background-color: #1c61d1; /* немного ярче при наведении */
+  transform: scale(1.05);    /* лёгкое увеличение */
+}
+
+button:active {
+  background-color: #0b3b7a; /* тёмнее при клике */
+  transform: scale(0.98);
+}
+
+button:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(209, 230, 255, 0.5);
+}

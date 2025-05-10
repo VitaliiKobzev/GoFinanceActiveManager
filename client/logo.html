@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GoFinance Logo</title>
+  <style>
+    body {
+      background-color: #0e4da2; /* близкий к фону */
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .logo-icon {
+      width: 60px;
+      height: 60px;
+      background-image: url('/mnt/data/logov1.png'); /* иконка будет из файла */
+      background-size: contain;
+      background-repeat: no-repeat;
+      background-position: left center;
+    }
+
+    .logo-text {
+      color: white;
+    }
+
+    .logo-text h1 {
+      margin: 0;
+      font-size: 36px;
+      font-weight: 400;
+    }
+
+    .logo-text h1 span {
+      font-weight: 700;
+    }
+
+    .logo-text p {
+      margin: 4px 0 0 0;
+      letter-spacing: 4px;
+      font-size: 14px;
+      text-transform: uppercase;
+      color: #d1e6ff;
+    }
+  </style>
+</head>
+<body>
+  <div class="logo">
+    <div class="logo-icon"></div>
+    <div class="logo-text">
+      <h1><span>Go</span>Finance</h1>
+      <p>Active Manager</p>
+    </div>
+  </div>
+</body>
+</html>
