@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	//"math"
+	"math"
 	"net/http"
 	"net/url"
 	"time"
@@ -61,7 +61,6 @@ func (b *BotClient) SendNotification(message string) error {
 	return nil
 }
 
-/*
 func startHourlyPriceCheck(b *BotClient) {
 	b.CheckPortfolioChanges()
 	ticker := time.NewTicker(1 * time.Hour)
@@ -174,7 +173,6 @@ func calculatePortfolioValue(assets []Asset) float64 {
 	}
 	return total
 }
-*/
 
 // SendDailyPortfolioReport отправляет ежедневный отчет
 func (b *BotClient) SendDailyPortfolioReport() {

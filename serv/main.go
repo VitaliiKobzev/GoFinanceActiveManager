@@ -85,7 +85,7 @@ func main() {
 	// Запуск периодического обновления цен
 	go updatePrices()
 
-	//go startHourlyPriceCheck(botClient)
+	go startHourlyPriceCheck(botClient)
 
 	go botClient.StartDailyNotifications()
 
@@ -117,6 +117,8 @@ func main() {
 	http.Handle("/deleteportfolio", corsMiddleware(http.HandlerFunc(deletePortfolioHandler)))
 
 	http.Handle("/updateinitialprices", corsMiddleware(http.HandlerFunc(updateInitialPricesHandler)))
+
+	http.Handle("/export", corsMiddleware(http.HandlerFunc(exportToExcelHandler)))
 
 	// Запуск HTTP-сервера
 	fmt.Println("Server started on :8080")
