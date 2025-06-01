@@ -3,11 +3,14 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
-	"gorm.io/driver/sqlite"
+	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 )
 
@@ -18,8 +21,16 @@ type Asset struct {
 	Type         string
 	Price        float64 // Текущая цена
 	InitialPrice float64
-	Quantity     float64 // Количество в портфеле
-	PortfolioID  *uint   // ID портфеля, к которому принадлежит актив
+	Quantity     float64        // Количество в портфеле
+	PortfolioID  *uint          // ID портфеля, к которому принадлежит актив
+	PriceHistory []PriceHistory `gorm:"foreignKey:AssetID"` // История цен
+}
+
+type PriceHistory struct {
+	ID        uint `gorm:"primaryKey"`
+	AssetID   uint
+	Price     float64
+	Timestamp time.Time
 }
 
 // Модель портфеля финансовых активов
@@ -61,15 +72,21 @@ func seedDatabase() {
 }
 
 func main() {
+	// Параметры подключения к MySQL
+	dsn := "dist_admin:XA34619RA3n77L7aZrtK@tcp(127.0.0.1:3306)/assets?charset=utf8mb4&parseTime=True&loc=Local"
+
 	// Инициализация базы данных
 	var err error
-	db, err = gorm.Open(sqlite.Open("assets.db"), &gorm.Config{})
+	db, err = gorm.Open(mysql.Open(dsn), &gorm.Config{})
 	if err != nil {
-		panic("failed to connect database")
+		panic(fmt.Sprintf("failed to connect to MySQL: %v", err))
 	}
-	db.AutoMigrate(&Asset{})
-	db.AutoMigrate(&Portfolio{})
 
+	// Автомиграция схемы
+	err = db.AutoMigrate(&Portfolio{}, &Asset{}, &PriceHistory{})
+	if err != nil {
+		panic(fmt.Sprintf("failed to auto-migrate database schema: %v", err))
+	}
 	// Заполнение базы данных начальными данными
 	seedDatabase()
 
@@ -96,7 +113,6 @@ func main() {
 			w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
 			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 
-			// Обработка предварительных запросов (preflight)
 			if r.Method == "OPTIONS" {
 				w.WriteHeader(http.StatusOK)
 				return
@@ -119,6 +135,11 @@ func main() {
 	http.Handle("/updateinitialprices", corsMiddleware(http.HandlerFunc(updateInitialPricesHandler)))
 
 	http.Handle("/export", corsMiddleware(http.HandlerFunc(exportToExcelHandler)))
+
+	http.Handle("/pricehistory", corsMiddleware(http.HandlerFunc(PriceHistoryHandler)))
+	http.Handle("/portfoliohistory", corsMiddleware(http.HandlerFunc(PortfolioHistoryHandler)))
+
+	http.Handle("/calculate-risk", corsMiddleware(http.HandlerFunc(riskHandler)))
 
 	// Запуск HTTP-сервера
 	fmt.Println("Server started on :8080")
@@ -169,6 +190,19 @@ func updatePrices() {
 			if newPrice, exists := prices[assets[i].Name]; exists {
 				assets[i].Price = newPrice
 				db.Save(&assets[i])
+			}
+			if newPrice, exists := prices[assets[i].Name]; exists {
+				// Обновляем текущую цену
+				assets[i].Price = newPrice
+				db.Save(&assets[i])
+
+				// Добавляем запись в историю цен
+				historyEntry := PriceHistory{
+					AssetID:   assets[i].ID,
+					Price:     newPrice,
+					Timestamp: time.Now(),
+				}
+				db.Create(&historyEntry)
 			}
 		}
 
@@ -265,6 +299,16 @@ func addAssetHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		// После успешного создания актива:
+		if asset.Price > 0 {
+			historyEntry := PriceHistory{
+				AssetID:   asset.ID,
+				Price:     asset.Price,
+				Timestamp: time.Now(),
+			}
+			db.Create(&historyEntry)
+		}
+
 		w.WriteHeader(http.StatusOK)
 	}
 }
@@ -312,10 +356,11 @@ func getPortfolioHandler(w http.ResponseWriter, r *http.Request) {
 	response := make([]map[string]interface{}, len(portfolio.Assets))
 	for i, asset := range portfolio.Assets {
 		response[i] = map[string]interface{}{
-			"Name":     asset.Name,
-			"Type":     asset.Type,
-			"Price":    asset.Price,
-			"Quantity": asset.Quantity,
+			"Name":         asset.Name,
+			"Type":         asset.Type,
+			"Price":        asset.Price,
+			"InitialPrice": asset.InitialPrice,
+			"Quantity":     asset.Quantity,
 		}
 	}
 
@@ -381,6 +426,10 @@ func getPortfoliosHandler(w http.ResponseWriter, r *http.Request) {
 		totalBalance := 0.0
 		for _, asset := range portfolio.Assets {
 			totalBalance += asset.Price * float64(asset.Quantity)
+
+			if asset.Price == 0 && asset.Type != "Stocks" && asset.Type != "Cryptocurrency" {
+				totalBalance += asset.InitialPrice
+			}
 		}
 
 		response[i] = map[string]interface{}{
@@ -554,4 +603,149 @@ func updateAssetsInitialPrices(assets []Asset) []string {
 	}
 
 	return updatedAssets
+}
+
+// Получить историю цен для конкретного актива
+func PriceHistoryHandler(w http.ResponseWriter, r *http.Request) {
+	// Разрешаем CORS (если у вас ещё нет middleware)
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	if r.Method != "GET" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Получаем параметры из URL
+	query := r.URL.Query()
+	portfolioName := query.Get("portfolio")
+	assetName := query.Get("asset")
+
+	// Логируем полученные параметры для отладки
+	log.Printf("Запрос истории цен: портфель=%s, актив=%s", portfolioName, assetName)
+
+	var portfolio Portfolio
+	// Ищем портфель и конкретный актив
+	if err := db.Where("name = ?", portfolioName).
+		Preload("Assets", "name = ?", assetName).
+		Preload("Assets.PriceHistory").
+		First(&portfolio).Error; err != nil {
+
+		log.Printf("Ошибка поиска: %v", err)
+		http.Error(w, "Портфель или актив не найден", http.StatusNotFound)
+		return
+	}
+
+	if len(portfolio.Assets) == 0 {
+		http.Error(w, "Актив не найден", http.StatusNotFound)
+		return
+	}
+
+	asset := portfolio.Assets[0]
+
+	// Получаем историю цен (последние 30 записей)
+	var history []PriceHistory
+	if err := db.Where("asset_id = ?", asset.ID).
+		Order("timestamp desc").
+		Limit(30).
+		Find(&history).Error; err != nil {
+
+		http.Error(w, "Ошибка при получении истории", http.StatusInternalServerError)
+		return
+	}
+
+	// Переворачиваем порядок для графика (от старых к новым)
+	for i, j := 0, len(history)-1; i < j; i, j = i+1, j-1 {
+		history[i], history[j] = history[j], history[i]
+	}
+
+	// Отправляем ответ
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(history)
+}
+
+// Получить историю стоимости портфеля
+func PortfolioHistoryHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	query := r.URL.Query()
+	portfolioName := query.Get("portfolio")
+	daysStr := query.Get("days")
+
+	days, err := strconv.Atoi(daysStr)
+	if err != nil {
+		days = 0
+	}
+
+	var portfolio Portfolio
+	if err := db.Where("name = ?", portfolioName).Preload("Assets").Preload("Assets.PriceHistory").First(&portfolio).Error; err != nil {
+		http.Error(w, "Портфель не найден", http.StatusNotFound)
+		return
+	}
+
+	// Собираем все уникальные даты из истории цен всех активов
+	dateMap := make(map[time.Time]bool)
+	for _, asset := range portfolio.Assets {
+		for _, ph := range asset.PriceHistory {
+			// Округляем до дня для группировки
+			date := time.Date(ph.Timestamp.Year(), ph.Timestamp.Month(), ph.Timestamp.Day(), 0, 0, 0, 0, ph.Timestamp.Location())
+			dateMap[date] = true
+		}
+	}
+
+	// Преобразуем в массив и сортируем
+	var dates []time.Time
+	for date := range dateMap {
+		if days > 0 && time.Since(date) > time.Duration(days)*24*time.Hour {
+			continue
+		}
+		dates = append(dates, date)
+	}
+	sort.Slice(dates, func(i, j int) bool { return dates[i].Before(dates[j]) })
+
+	// Для каждой даты вычисляем общую стоимость портфеля
+	type PortfolioValue struct {
+		Date       time.Time `json:"Date"`
+		TotalValue float64   `json:"TotalValue"`
+	}
+	var result []PortfolioValue
+
+	for _, date := range dates {
+		total := 0.0
+		for _, asset := range portfolio.Assets {
+			// Ищем последнюю цену актива ДО или НА дату
+			var price float64
+			found := false
+
+			// Сортируем PriceHistory по убыванию
+			sort.Slice(asset.PriceHistory, func(i, j int) bool {
+				return asset.PriceHistory[i].Timestamp.After(asset.PriceHistory[j].Timestamp)
+			})
+
+			for _, ph := range asset.PriceHistory {
+				phDate := time.Date(ph.Timestamp.Year(), ph.Timestamp.Month(), ph.Timestamp.Day(), 0, 0, 0, 0, ph.Timestamp.Location())
+				if phDate.Before(date) || phDate.Equal(date) {
+					price = ph.Price
+					found = true
+					break
+				}
+			}
+
+			if !found {
+				price = asset.InitialPrice
+			}
+
+			total += price * asset.Quantity
+		}
+
+		result = append(result, PortfolioValue{
+			Date:       date,
+			TotalValue: total,
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
 }

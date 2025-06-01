@@ -169,7 +169,11 @@ func (b *BotClient) CheckPortfolioChanges() {
 func calculatePortfolioValue(assets []Asset) float64 {
 	total := 0.0
 	for _, asset := range assets {
-		total += asset.Price * asset.Quantity
+		if asset.Price == 0 && asset.Type != "Stocks" && asset.Type != "Cryptocurrency" {
+			total += asset.InitialPrice
+		} else {
+			total += asset.Price * asset.Quantity
+		}
 	}
 	return total
 }
@@ -190,7 +194,11 @@ func (b *BotClient) SendDailyPortfolioReport() {
 		portfolioTotal := 0.0
 		initialTotal := 0.0
 		for _, asset := range portfolio.Assets {
-			portfolioTotal += asset.Price * asset.Quantity
+			if asset.Price == 0 && asset.Type != "Stocks" && asset.Type != "Cryptocurrency" {
+				portfolioTotal += asset.InitialPrice
+			} else {
+				portfolioTotal += asset.Price * asset.Quantity
+			}
 			initialTotal += asset.InitialPrice
 		}
 		totalAllPortfolios += portfolioTotal

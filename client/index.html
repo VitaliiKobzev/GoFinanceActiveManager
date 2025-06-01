@@ -154,30 +154,43 @@
                     const assetsData = await assetsResponse.json();
                     
                     // Рассчитываем риск портфолио
-                    const riskInfo = calculatePortfolioRisk(assetsData.items);
-                    
-                    // Определяем цвет в зависимости от уровня риска
-                    let riskColor = "#000000"; // по умолчанию черный
+                    const riskInfo = await calculatePortfolioRisk(assetsData.items);
+                    const portfolioRisk = riskInfo?.value || 0;
+                    let riskColor = "#000000";
+                    let riskLevel = "не определен";
+
                     if (riskInfo) {
-                        switch(riskInfo.level) {
-                            case "низкий": riskColor = "#4CAF50"; break;
-                            case "умеренный": riskColor = "#FFC107"; break;
-                            case "высокий": riskColor = "#F44336"; break;
+                        if (portfolioRisk < 0.1) {
+                            riskColor = "#4CAF50";
+                            riskLevel = "Консервативный";
+                        } else if (portfolioRisk < 0.2) {
+                            riskColor = "#8BC34A";
+                            riskLevel = "Умеренно-консервативный";
+                        } else if (portfolioRisk < 0.3) {
+                            riskColor = "#FFC107";
+                            riskLevel = "Умеренный";
+                        } else if (portfolioRisk < 0.5) {
+                            riskColor = "#FF9800";
+                            riskLevel = "Агрессивный";
+                        } else {
+                            riskColor = "#F44336";
+                            riskLevel = "Очень агрессивный";
                         }
                     }
 
                     const div = document.createElement("div");
                     div.className = "portfolio";
-                    div.style.borderLeft = `5px solid ${riskColor}`; // Добавляем цветную полосу
+                    div.style.borderLeft = `5px solid ${riskColor}`;
                     div.innerHTML = `
                         <h3>${portfolio.Name}</h3>
                         <p>Стоимость: ${portfolio.totalBalance.toFixed(2)} ₽</p>
-                        ${riskInfo ? `<p style="color: ${riskColor}">Риск: ${riskInfo.level}</p>` : ''}
+                        ${riskInfo ? `<p style="color: ${riskColor}">Риск: ${riskLevel}</p>` : '<p>Риск: информация недоступна</p>'}
                         <div class="portfolio-actions">
                             <button class="edit">Настроить</button>
                             <button class="delete" onclick="deletePortfolio('${portfolio.Name}', event)">Удалить</button>
                         </div>
                     `;
+
 
                     // Перенаправление по клику на сам блок
                     div.onclick = () => {
@@ -199,31 +212,21 @@
         }
 
     // Функция для расчета риска портфолио
-    function calculatePortfolioRisk(assets) {
-        if (!assets || assets.length === 0) return null;
-        
-        let totalRisk = 0;
-        let totalValue = 0;
-        
-        assets.forEach(asset => {
-            let assetRisk = 1.0; // По умолчанию для Other, InOutComes, Commodities
-            
-            if (asset.Type === "Cryptocurrency") {
-                assetRisk = 3.0;
-            } else if (asset.Type === "Stocks" || asset.Type === "Bonds") {
-                assetRisk = 2.0;
-            }
-            
-            const assetValue = asset.Price * asset.Quantity;
-            totalRisk += assetRisk * assetValue;
-            totalValue += assetValue;
+    async function calculatePortfolioRisk(assets) {
+        const response = await fetch(`${apiUrl}/calculate-risk`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(assets),
         });
-        
-        const averageRisk = totalRisk / totalValue;
-        
-        if (averageRisk <= 1.5) return { level: "низкий", value: averageRisk };
-        if (averageRisk <= 2.5) return { level: "умеренный", value: averageRisk };
-        return { level: "высокий", value: averageRisk };
+
+        if (!response.ok) {
+            throw new Error(`Error: ${response.statusText}`);
+        }
+
+        const result = await response.json();
+        return result;
     }
 
 
@@ -341,31 +344,6 @@
                 // Восстанавливаем кнопку
                 const btn = document.getElementById('exportBtn');
             }
-        }
-
-        function calculatePortfolioRisk(assets) {
-            if (!assets || assets.length === 0) return null;
-            
-            let totalRisk = 0;
-            let totalValue = 0;
-            
-            assets.forEach(asset => {
-                let assetRisk = 1.0; // По умолчанию для Other, InOutComes, Commodities
-                
-                if (asset.Type === "Cryptocurrency") {
-                    assetRisk = 3.0;
-                } else if (asset.Type === "Stocks" || asset.Type === "Bonds") {
-                    assetRisk = 2.0;
-                }
-                totalRisk += assetRisk;
-                totalValue += 1;
-            });
-            
-            const averageRisk = totalRisk / totalValue;
-            
-            if (averageRisk <= 1.5) return { level: "низкий", value: averageRisk };
-            if (averageRisk <= 2.5) return { level: "умеренный", value: averageRisk };
-            return { level: "высокий", value: averageRisk };
         }
 
         // Загрузка портфелей при запуске страницы

@@ -6,6 +6,7 @@
     <title>Менеджер фин активов</title>
     <script src="https://cdn.anychart.com/releases/v8/js/anychart-base.min.js"></script>
     <script src="https://cdn.anychart.com/releases/v8/js/anychart-ui.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="stylesheet" href="styles/logo.css">
     <style>
       table {
@@ -83,6 +84,27 @@
         #remove-form button[type="submit"] {
             background-color: #d32f2f;
         }
+
+        .chart-section {
+            margin: 30px 0;
+            padding: 20px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+        }
+        
+        .chart-container {
+            margin-top: 15px;
+            height: 300px;
+        }
+        
+        #asset-select {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
     </style>
   </head>
   <body>
@@ -136,8 +158,27 @@
 
     <div id="container" style="width: 600px; height: 450px;"></div>
 
+    <div class="chart-section">
+        <h2>История цены актива</h2>
+        <select id="asset-select">
+            <!-- Сюда загрузим активы -->
+        </select>
+        <div class="chart-container">
+            <canvas id="price-chart"></canvas>
+        </div>
+    </div>
+
+    <!-- График стоимости портфеля -->
+    <div class="chart-section">
+        <h2>Динамика портфеля</h2>
+        <div class="chart-container">
+            <canvas id="portfolio-chart"></canvas>
+        </div>
+    </div>
+
+
     <!-- Таблица для отображения портфеля -->
-    <h2>Текущее портфолио</h2>
+    <h2>Текущий портфель</h2>
 
     <div id="portfolio-risk" style="margin-bottom: 15px; font-size: 18px;"></div>
 
@@ -218,41 +259,57 @@
           const tbody = document.querySelector('#portfolio-table tbody');
           tbody.innerHTML = ''; // Очистить таблицу
 
+          console.log(assets);
+          
+
           assets.items.forEach(asset => {
               const row = document.createElement('tr');
               asset.x = asset.Name;
+              curPrice = asset.Price * asset.Quantity;
+              if (asset.Price == 0 && asset.Type != "Stocks" && asset.Type != "Cryptocurrency") {
+                curPrice = asset.InitialPrice
+              }
               asset.value = asset.Price * asset.Quantity;
               row.innerHTML = `
                   <td>${asset.Name}</td>
                   <td>${asset.Type}</td>
-                  <td>${(asset.Price * asset.Quantity).toFixed(2)}</td>
+                  <td>${(curPrice)}</td>
                   <td>${asset.Quantity}</td>
               `;
               tbody.appendChild(row);
           });
 
-          // Обновляем отображение риска портфеля
-            const riskInfo = calculatePortfolioRisk(assets.items);
+            const riskInfo = await calculatePortfolioRisk(assets.items); // Добавьте await, если функция асинхронная
             const riskElement = document.getElementById('portfolio-risk');
-            
+
             if (riskInfo) {
                 let riskColor;
-                switch(riskInfo.level) {
-                    case "низкий": riskColor = "#4CAF50"; break;
-                    case "умеренный": riskColor = "#FFC107"; break;
-                    case "высокий": riskColor = "#F44336"; break;
-                    default: riskColor = "#000000";
+                switch (riskInfo.level) {
+                    case "низкий": 
+                        riskColor = "#4CAF50"; 
+                        break;
+                    case "умеренный": 
+                        riskColor = "#FFC107"; 
+                        break;
+                    case "высокий": 
+                        riskColor = "#F44336"; 
+                        break;
+                    default: 
+                        riskColor = "#000000";
                 }
-                
+
                 riskElement.innerHTML = `
                     Уровень риска: <span style="color: ${riskColor}; font-weight: bold;">
-                    ${riskInfo.level} (${riskInfo.value.toFixed(2)})</span>
+                    ${riskInfo.level} (${riskInfo.value.toFixed(4)})</span>
                 `;
             } else {
                 riskElement.innerHTML = "Недостаточно данных для расчета риска";
             }
 
+
           updateChart(assets.items);
+          initCharts();
+          await updatePortfolioChart();
       }
 
         // Обработчик формы добавления актива
@@ -360,39 +417,31 @@
             }
         });
 
-        function calculatePortfolioRisk(assets) {
-            if (!assets || assets.length === 0) return null;
-            
-            let totalRisk = 0;
-            let totalValue = 0;
-            
-            assets.forEach(asset => {
-                let assetRisk = 1.0; // По умолчанию для Other, InOutComes, Commodities
-                
-                if (asset.Type === "Cryptocurrency") {
-                    assetRisk = 3.0;
-                } else if (asset.Type === "Stocks" || asset.Type === "Bonds") {
-                    assetRisk = 2.0;
-                }
-                totalRisk += assetRisk;
-                totalValue += 1;
+        async function calculatePortfolioRisk(assets) {
+            const response = await fetch(`${apiUrl}/calculate-risk`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(assets),
             });
-            
-            const averageRisk = totalRisk / totalValue;
-            
-            if (averageRisk <= 1.5) return { level: "низкий", value: averageRisk };
-            if (averageRisk <= 2.5) return { level: "умеренный", value: averageRisk };
-            return { level: "высокий", value: averageRisk };
+
+            if (!response.ok) {
+                throw new Error(`Error: ${response.statusText}`);
+            }
+
+            const result = await response.json();
+            return result;
         }
 
         // Инициализация: загрузка портфеля при запуске
         updatePortfolio();
-        setInterval(updatePortfolio, 1000);
+        setInterval(updatePortfolio, 100000);
 
         function drawChartTotal(data) {
             chart = anychart.pie();
             chart.title('Активы');
-            chart.data(data.map(asset => ({ x: asset.Name, value: asset.Price * asset.Quantity })));
+            chart.data(data.map(asset => ({ x: asset.Name, value: asset.Price * asset.Quantity > 0 ? asset.Price * asset.Quantity : asset.InitialPrice})));
             chart.container('container');
             chart.draw();
         }
@@ -402,6 +451,207 @@
                 chart.data(data.map(asset => ({ x: asset.Name, value: asset.Price * asset.Quantity })));
             } else {
                 drawChartTotal(data);
+            }
+        }
+
+        // Глобальные переменные
+        let currentPortfolioName;
+        let priceChart;
+
+        // Инициализация при загрузке страницы
+        document.addEventListener('DOMContentLoaded', async () => {
+            currentPortfolioName = getQueryParam('name');
+            if (!currentPortfolioName) {
+                console.error("Не указано имя портфеля в URL");
+                return;
+            }
+            
+            await initCharts();
+            await updatePortfolioChart();
+        });
+
+        // Инициализация графиков
+        async function initCharts() {
+            try {
+                // 1. Загружаем данные портфеля
+                const portfolioResponse = await fetch(`${apiUrl}/get?name=${currentPortfolioName}`);
+                if (!portfolioResponse.ok) throw new Error("Ошибка загрузки портфеля");
+                
+                const portfolioData = await portfolioResponse.json();
+                
+                // 2. Обновляем селектор активов
+                updateAssetSelector(portfolioData.items);
+                
+                // 3. Загружаем график портфеля
+                await updatePortfolioChart();
+                
+            } catch (error) {
+                console.error("Ошибка инициализации:", error);
+            }
+        }
+
+        // Обновление селектора активов
+        function updateAssetSelector(assets) {
+            const select = document.getElementById('asset-select');
+            select.innerHTML = '<option value="">Выберите актив</option>';
+            
+            assets.forEach(asset => {
+                const option = document.createElement('option');
+                option.value = asset.Name;
+                option.textContent = `${asset.Name} (${asset.Type})`;
+                select.appendChild(option);
+            });
+            
+            // Обработчик изменения выбора
+            select.addEventListener('change', async () => {
+                if (select.value) {
+                    await updatePriceChart(select.value);
+                }
+            });
+        }
+
+        // Обновление графика цены актива
+        async function updatePriceChart(assetName) {
+            try {
+                const response = await fetch(
+                    `${apiUrl}/pricehistory?portfolio=${currentPortfolioName}&asset=${assetName}`
+                );
+                
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                
+                const historyData = await response.json();
+                
+                // Если нет данных
+                if (!historyData || historyData.length === 0) {
+                    console.log("Нет данных по истории цен");
+                    return;
+                }
+                
+                // Подготовка данных для графика
+                const labels = historyData.map(item => 
+                    new Date(item.Timestamp).toLocaleDateString()
+                );
+                const prices = historyData.map(item => item.Price);
+                
+                // Создаём или обновляем график
+                const ctx = document.getElementById('price-chart').getContext('2d');
+                
+                if (priceChart) {
+                    priceChart.data.labels = labels;
+                    priceChart.data.datasets[0].data = prices;
+                    priceChart.data.datasets[0].label = `Цена ${assetName}`;
+                    priceChart.update();
+                } else {
+                    priceChart = new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: labels,
+                            datasets: [{
+                                label: `Цена ${assetName}`,
+                                data: prices,
+                                borderColor: '#0d3f8a',
+                                backgroundColor: 'rgba(13, 63, 138, 0.1)',
+                                fill: true,
+                                tension: 0.1
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false
+                        }
+                    });
+                }
+                
+            } catch (error) {
+                console.error("Ошибка загрузки истории цен:", error);
+            }
+        }
+
+        // График стоимости портфеля
+        async function updatePortfolioChart() {
+            try {
+                const portfolioName = getQueryParam('name');
+                if (!portfolioName) return;
+
+                // Получаем данные истории портфеля
+                const response = await fetch(`${apiUrl}/portfoliohistory?portfolio=${portfolioName}`);
+                if (!response.ok) throw new Error('Ошибка загрузки данных');
+                
+                const historyData = await response.json();
+
+                //console.log(historyData);
+                
+                // Если нет данных
+                if (!historyData || historyData.length === 0) {
+                    console.log("Нет данных по истории портфеля");
+                    return;
+                }
+                
+                // Подготовка данных для графика
+                const labels = historyData.map(item => 
+                    new Date(item.Date).toLocaleDateString()
+                );
+                const values = historyData.map(item => item.TotalValue);
+                
+                // Получаем контекст canvas
+                const ctx = document.getElementById('portfolio-chart').getContext('2d');
+                
+                // Удаляем старый график, если есть
+                if (window.portfolioChart) {
+                    window.portfolioChart.destroy();
+                }
+                
+                // Создаем новый график
+                window.portfolioChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'Стоимость портфеля',
+                            data: values,
+                            borderColor: '#4CAF50', // Зеленый цвет
+                            backgroundColor: 'rgba(76, 175, 80, 0.1)', // Светло-зеленый с прозрачностью
+                            borderWidth: 2,
+                            tension: 0.1, // Плавность линий
+                            fill: true // Заливка под линией
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                display: true,
+                                position: 'top'
+                            },
+                            tooltip: {
+                                mode: 'index',
+                                intersect: false
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: false,
+                                title: {
+                                    display: true,
+                                    text: 'Стоимость'
+                                }
+                            },
+                            x: {
+                                title: {
+                                    display: true,
+                                    text: 'Дата'
+                                }
+                            }
+                        }
+                    }
+                });
+                
+            } catch (error) {
+                console.error('Ошибка при построении графика портфеля:', error);
+                // Можно добавить отображение ошибки пользователю
+                document.getElementById('portfolio-chart').innerHTML = 
+                    `<div class="error">Ошибка загрузки данных: ${error.message}</div>`;
             }
         }
     </script>
