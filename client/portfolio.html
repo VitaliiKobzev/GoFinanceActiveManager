@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Менеджер фин активов</title>
+    <title>Мониторинг фин активов</title>
     <script src="https://cdn.anychart.com/releases/v8/js/anychart-base.min.js"></script>
     <script src="https://cdn.anychart.com/releases/v8/js/anychart-ui.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -114,7 +114,7 @@
                 <div class="logo-icon"></div>
                 <div class="logo-text">
                     <h1><span>Go</span>Finance</h1>
-                    <p>Active Manager</p>
+                    <p>Active Monitoring</p>
                 </div>
             </a>
             <nav class="main-nav">
@@ -141,6 +141,10 @@
       <input type="number" step="0.01" id="initialPrice" name="price" required><br>
       <label for="quantity">Количество:</label>
       <input type="number" id="quantity" name="quantity" required><br>
+      <label for="acquisition">Год приобретения(для товаров):</label>
+      <input type="number" step="1" id="acquisitionYear" name="acquisition"><br>
+      <label for="release">Год выпуска(для товаров):</label>
+      <input type="number" step="1" id="releaseYear" name="release"><br>
       <button type="submit">Добавить</button>
     </form>
 
@@ -150,6 +154,23 @@
       <label for="remove-name">Название:</label>
       <input type="text" id="remove-name" name="remove-name" required><br>
       <button type="submit">Удалить</button>
+    </form>
+
+    <form id="price-history-form">
+        <h2>Обновить цену актива</h2>
+        <div class="form-group">
+            <label for="ph-asset-name">Название актива:</label>
+            <input type="text" id="ph-asset-name" name="ph-asset-name" required>
+        </div>
+        <div class="form-group">
+            <label for="ph-price">Новая цена:</label>
+            <input type="number" step="0.01" min="0.01" id="ph-price" name="ph-price" required>
+        </div>
+        <div class="form-group">
+            <label for="ph-date">Дата:</label>
+            <input type="datetime-local" id="ph-date" name="ph-date" required>
+        </div>
+        <button type="submit">Обновить цену</button>
     </form>
 
     <div class="button-container">
@@ -260,24 +281,58 @@
           tbody.innerHTML = ''; // Очистить таблицу
 
           console.log(assets);
-          
 
-          assets.items.forEach(asset => {
-              const row = document.createElement('tr');
-              asset.x = asset.Name;
-              curPrice = asset.Price * asset.Quantity;
-              if (asset.Price == 0 && asset.Type != "Stocks" && asset.Type != "Cryptocurrency") {
-                curPrice = asset.InitialPrice
-              }
-              asset.value = asset.Price * asset.Quantity;
-              row.innerHTML = `
-                  <td>${asset.Name}</td>
-                  <td>${asset.Type}</td>
-                  <td>${(curPrice)}</td>
-                  <td>${asset.Quantity}</td>
-              `;
-              tbody.appendChild(row);
-          });
+        const table = document.getElementById('portfolio-table');
+        const thead = table.querySelector('thead');
+          
+        const hasCommodities = assets.items.some(asset => asset.Type === "Commodities");
+
+        // Проверяем наличие заголовков "Год покупки" и "Год выпуска"
+        const headerRow = thead.querySelector('tr');
+        const acquisitionHeaderExists = Array.from(headerRow.children).some(th => th.textContent === "Год покупки");
+        const releaseHeaderExists = Array.from(headerRow.children).some(th => th.textContent === "Год выпуска");
+
+        // Добавляем заголовки для новых полей в существующую строку заголовков
+        if (hasCommodities && !acquisitionHeaderExists && !releaseHeaderExists) {
+            const acquisitionHeader = document.createElement('th');
+            acquisitionHeader.textContent = 'Год покупки';
+            const releaseHeader = document.createElement('th');
+            releaseHeader.textContent = 'Год выпуска';
+
+            headerRow.appendChild(acquisitionHeader);
+            headerRow.appendChild(releaseHeader);
+        }
+
+        assets.items.forEach(asset => {
+            const row = document.createElement('tr');
+            asset.x = asset.Name;
+            let curPrice = asset.Price * asset.Quantity;
+
+            if (asset.Price == 0 && asset.Type != "Stocks" && asset.Type != "Cryptocurrency") {
+                curPrice = asset.InitialPrice;
+            }
+
+            asset.value = asset.Price * asset.Quantity;
+
+            // Создаем строку таблицы
+            row.innerHTML = `
+                <td>${asset.Name}</td>
+                <td>${asset.Type}</td>
+                <td>${curPrice}</td>
+                <td>${asset.Quantity}</td>
+            `;
+
+            // Если есть активы типа "Commodities", добавляем AcquisitionYear и ReleaseYear
+            if (hasCommodities) {
+                row.innerHTML += `
+                    <td>${asset.AcquisitionYear !== null ? asset.AcquisitionYear : '-'}</td>
+                    <td>${asset.ReleaseYear !== null ? asset.ReleaseYear : '-'}</td>
+                `;
+            }
+
+            tbody.appendChild(row);
+        });
+
 
             const riskInfo = await calculatePortfolioRisk(assets.items); // Добавьте await, если функция асинхронная
             const riskElement = document.getElementById('portfolio-risk');
@@ -327,14 +382,29 @@
                 return;
             }
 
-            const formData = {
-                name: document.getElementById('name').value,
-                type: document.getElementById('type').value,
-                price: 0.00, // parseFloat(document.getElementById('price').value)
-                initialPrice: parseFloat(document.getElementById('initialPrice').value),
-                quantity: parseInt(document.getElementById('quantity').value),
-                portfolioID: portfolioID, // Добавляем ID портфеля
-            };
+            let formData;
+
+            if (document.getElementById('type').value == "Commodities") {
+                formData = {
+                    name: document.getElementById('name').value,
+                    type: document.getElementById('type').value,
+                    price: 0.00, // parseFloat(document.getElementById('price').value)
+                    initialPrice: parseFloat(document.getElementById('initialPrice').value),
+                    quantity: parseInt(document.getElementById('quantity').value),
+                    acquisitionYear: parseInt(document.getElementById('acquisitionYear').value),
+                    releaseYear: parseInt(document.getElementById('releaseYear').value),
+                    portfolioID: portfolioID, // Добавляем ID портфеля
+                };
+            } else {
+                formData = {
+                    name: document.getElementById('name').value,
+                    type: document.getElementById('type').value,
+                    price: 0.00, // parseFloat(document.getElementById('price').value)
+                    initialPrice: parseFloat(document.getElementById('initialPrice').value),
+                    quantity: parseInt(document.getElementById('quantity').value),
+                    portfolioID: portfolioID, // Добавляем ID портфеля
+                };
+            }
 
             const response = await fetch(`${apiUrl}/add`, {
                 method: 'POST',
@@ -654,6 +724,71 @@
                     `<div class="error">Ошибка загрузки данных: ${error.message}</div>`;
             }
         }
+
+        document.getElementById('price-history-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const portfolioName = getQueryParam('name');
+            if (!portfolioName) {
+                notification.error('Ошибка', 'Не указано имя портфеля в URL');
+                return;
+            }
+
+            const assetName = document.getElementById('ph-asset-name').value;
+            const price = parseFloat(document.getElementById('ph-price').value);
+            let timestamp = document.getElementById('ph-date').value;
+
+            // Если дата не указана, используем текущее время
+            if (!timestamp) {
+                timestamp = new Date().toISOString();
+            } else {
+                // Преобразуем локальное время в ISO строку
+                timestamp = new Date(timestamp).toISOString();
+            }
+
+            try {
+                const response = await fetch(`${apiUrl}/addhistory`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        portfolioName: portfolioName,
+                        assetName: assetName,
+                        price: price,
+                        timestamp: timestamp
+                    })
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    notification.error('Ошибка', errorData.error || 'Не удалось обновить цену');
+                    return;
+                }
+
+                const result = await response.json();
+                notification.success('Успех', 'Цена актива успешно обновлена');
+                
+                // Обновляем данные на странице
+                updatePortfolio();
+                
+                // Если обновляемый актив выбран в селекторе, обновляем его график
+                const selectedAsset = document.getElementById('asset-select').value;
+                if (selectedAsset === assetName) {
+                    await updatePriceChart(assetName);
+                }
+                
+                // Обновляем график портфеля
+                await updatePortfolioChart();
+                
+                // Очищаем форму
+                document.getElementById('ph-price').value = '';
+                document.getElementById('ph-date').value = '';
+            } catch (error) {
+                notification.error('Ошибка', 'Произошла ошибка при обновлении цены');
+                console.error('Error:', error);
+            }
+        });
     </script>
   </body>
   </html>

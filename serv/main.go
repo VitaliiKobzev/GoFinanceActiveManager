@@ -16,14 +16,16 @@ import (
 
 // Модель актива
 type Asset struct {
-	ID           uint `gorm:"primaryKey"`
-	Name         string
-	Type         string
-	Price        float64 // Текущая цена
-	InitialPrice float64
-	Quantity     float64        // Количество в портфеле
-	PortfolioID  *uint          // ID портфеля, к которому принадлежит актив
-	PriceHistory []PriceHistory `gorm:"foreignKey:AssetID"` // История цен
+	ID              uint `gorm:"primaryKey"`
+	Name            string
+	Type            string
+	Price           float64 // Текущая цена
+	InitialPrice    float64
+	Quantity        float64        // Количество в портфеле
+	PortfolioID     *uint          // ID портфеля, к которому принадлежит актив
+	PriceHistory    []PriceHistory `gorm:"foreignKey:AssetID"` // История цен
+	AcquisitionYear *int           // Год приобретения
+	ReleaseYear     *int
 }
 
 type PriceHistory struct {
@@ -44,7 +46,7 @@ var db *gorm.DB
 
 // Функция для заполнения базы данных начальными данными
 func seedDatabase() {
-	// Проверяем, есть ли уже портфели в базе данных
+	// Есть ли уже портфели в базе данных
 	var portfolioCount int64
 	db.Model(&Portfolio{}).Count(&portfolioCount)
 	if portfolioCount > 0 {
@@ -52,11 +54,11 @@ func seedDatabase() {
 		return
 	}
 
-	// Создаем начальный портфель
+	// Начальный портфель
 	defaultPortfolio := Portfolio{Name: "Default Portfolio"}
 	db.Create(&defaultPortfolio)
 
-	// Добавляем активы в начальный портфель
+	// Активы в начальный портфель
 	assets := []Asset{
 		{Name: "Bitcoin", Type: "Cryptocurrency", Price: 1, Quantity: 1, PortfolioID: &defaultPortfolio.ID},
 		{Name: "Ethereum", Type: "Cryptocurrency", Price: 1, Quantity: 1, PortfolioID: &defaultPortfolio.ID},
@@ -138,6 +140,7 @@ func main() {
 
 	http.Handle("/pricehistory", corsMiddleware(http.HandlerFunc(PriceHistoryHandler)))
 	http.Handle("/portfoliohistory", corsMiddleware(http.HandlerFunc(PortfolioHistoryHandler)))
+	http.Handle("/addhistory", corsMiddleware(http.HandlerFunc(AddPriceHistoryHandler)))
 
 	http.Handle("/calculate-risk", corsMiddleware(http.HandlerFunc(riskHandler)))
 
@@ -356,11 +359,13 @@ func getPortfolioHandler(w http.ResponseWriter, r *http.Request) {
 	response := make([]map[string]interface{}, len(portfolio.Assets))
 	for i, asset := range portfolio.Assets {
 		response[i] = map[string]interface{}{
-			"Name":         asset.Name,
-			"Type":         asset.Type,
-			"Price":        asset.Price,
-			"InitialPrice": asset.InitialPrice,
-			"Quantity":     asset.Quantity,
+			"Name":            asset.Name,
+			"Type":            asset.Type,
+			"Price":           asset.Price,
+			"InitialPrice":    asset.InitialPrice,
+			"Quantity":        asset.Quantity,
+			"AcquisitionYear": asset.AcquisitionYear,
+			"ReleaseYear":     asset.ReleaseYear,
 		}
 	}
 
@@ -607,7 +612,7 @@ func updateAssetsInitialPrices(assets []Asset) []string {
 
 // Получить историю цен для конкретного актива
 func PriceHistoryHandler(w http.ResponseWriter, r *http.Request) {
-	// Разрешаем CORS (если у вас ещё нет middleware)
+	// Разрешаем CORS
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	if r.Method != "GET" {
@@ -748,4 +753,93 @@ func PortfolioHistoryHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(result)
+}
+
+func AddPriceHistoryHandler(w http.ResponseWriter, r *http.Request) {
+	// Разрешаем CORS
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	if r.Method == "OPTIONS" {
+		w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Проверяем Content-Type
+	contentType := r.Header.Get("Content-Type")
+	if contentType != "application/json" {
+		http.Error(w, "Expected content type application/json", http.StatusUnsupportedMediaType)
+		return
+	}
+
+	// Читаем тело запроса
+	var request struct {
+		PortfolioName string    `json:"portfolioName"`
+		AssetName     string    `json:"assetName"`
+		Price         float64   `json:"price"`
+		Timestamp     time.Time `json:"timestamp"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// Валидация данных
+	if request.PortfolioName == "" || request.AssetName == "" {
+		http.Error(w, "Portfolio name and asset name are required", http.StatusBadRequest)
+		return
+	}
+
+	if request.Price <= 0 {
+		http.Error(w, "Price must be positive", http.StatusBadRequest)
+		return
+	}
+
+	// Если timestamp не указан, используем текущее время
+	if request.Timestamp.IsZero() {
+		request.Timestamp = time.Now()
+	}
+
+	// Находим актив
+	var asset Asset
+	if err := db.Joins("JOIN portfolios ON portfolios.id = assets.portfolio_id").
+		Where("portfolios.name = ? AND assets.name = ?", request.PortfolioName, request.AssetName).
+		First(&asset).Error; err != nil {
+		return
+	}
+
+	// Создаем запись в истории цен
+	historyEntry := PriceHistory{
+		AssetID:   asset.ID,
+		Price:     request.Price,
+		Timestamp: request.Timestamp,
+	}
+
+	if err := db.Create(&historyEntry).Error; err != nil {
+		http.Error(w, fmt.Sprintf("Failed to create price history: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Обновляем текущую цену актива
+	asset.Price = request.Price
+	if err := db.Save(&asset).Error; err != nil {
+		http.Error(w, fmt.Sprintf("Failed to update asset price: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Возвращаем успешный ответ
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":  "success",
+		"message": "Price history entry added",
+		"data":    historyEntry,
+	})
 }
