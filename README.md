@@ -1,4 +1,4 @@
-# GoFinanceActiveManager
+# GoFinanceActiveMonitoring
  
 Локальное приложение целью которого является мониторинг по активам пользователя.
 
