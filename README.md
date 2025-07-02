@@ -41,6 +41,6 @@ go run serv/main.go serv/getCrypto.go serv/apiKeys.go serv/getCurrency.go serv/s
 go run client/main.go
 ```
 ### Скриншоты приложения
-![Главная страница](https://ibb.co/qY4xMFTx)
-![Страница портфеля](https://ibb.co/jPGyFhhy)
-![Страница изменения портфеля](https://ibb.co/604QpQx7)
+![Главная страница](https://i.ibb.co/JjbCRFDC/34537-799x350.png)
+![Страница портфеля](https://i.ibb.co/5gvrVTTr/34538-800x319.png)
+![Страница изменения портфеля](https://i.ibb.co/Qv60q0R3/34539-434x156.png)
